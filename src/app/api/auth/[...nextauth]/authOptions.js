@@ -5,12 +5,19 @@ import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
-import clientPromise from "@/libs/mongoConnect";
-import { UserInfo } from "@/models/UserInfo";
+
+const MONGO_URL = process.env.MONGO_URL; // Assuming a secure way to store the URL
+const SECRET = process.env.SECRET; // Assuming a secure way to store the secret
+
+// Establish a global Mongoose connection (assuming you have a connection function)
+let client;
+mongoose.connect(MONGO_URL)
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("Error connecting to MongoDB:", err));
 
 const authOptions = {
-  secret: process.env.SECRET,
-  adapter: MongoDBAdapter(clientPromise),
+  secret: SECRET,
+  adapter: MongoDBAdapter(clientPromise), // Assuming clientPromise resolves to the connection
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -24,17 +31,18 @@ const authOptions = {
         password: { label: "Password", type: "password", placeholder: "password" },
       },
       async authorize(credentials, req) {
-        const email = credentials?.email;
-        const password = credentials?.password;
+        const { email, password } = credentials;
 
-        mongoose.connect(process.env.MONGO_URL);
         const user = await User.findOne({ email });
-        const passwordOk = user && bcrypt.compareSync(password, user.password);
-
-        if (passwordOk) {
-          return user;
+        if (!user) {
+          // Handle invalid email case (optional: throw an error)
+          return null;
         }
 
+        const passwordValid = await bcrypt.compare(password, user.password);
+        if (passwordValid) {
+          return user;
+        }
         return null;
       },
     }),
